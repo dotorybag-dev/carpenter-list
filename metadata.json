@@ -1,0 +1,5 @@
+{
+  "name": "공유 리스트 앱",
+  "description": "구글 시트 연동형 공유 리스트 앱",
+  "requestFramePermissions": []
+}
