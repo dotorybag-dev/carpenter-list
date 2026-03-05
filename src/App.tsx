@@ -15,7 +15,7 @@ interface GasRow {
   '3': boolean;
 }
 
-// ⚠️ 여기에 사용자님의 웹 앱 URL을 직접 넣으세요!
+// ⚠️ 실제 구글 앱스 스크립트 웹 앱 URL을 넣으세요.
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzqF0tn0zy1w8hjOPuDr8wgZsvhVZFdxdzG8rpIFrCyn4vLRp6ayNSk20MPT3rdrLBd/exec";
 
 export default function App() {
@@ -23,15 +23,14 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // 데이터 불러오기 함수
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      // 캐시 방지를 위해 랜덤 쿼리 추가
       const response = await fetch(`${GAS_URL}?t=${Date.now()}`);
-      if (!response.ok) throw new Error('데이터를 불러오는데 실패했습니다.');
+      if (!response.ok) throw new Error('데이터 연결 실패');
       
       const result = await response.json();
       const formattedResult = result.map((row: any) => ({
@@ -43,7 +42,7 @@ export default function App() {
       
       setData(formattedResult);
     } catch (err: any) {
-      setError('데이터를 불러올 수 없습니다. URL 배포 설정(모든 사용자)을 확인해주세요.');
+      setError('시트 데이터를 가져올 수 없습니다. 권한 설정을 확인하세요.');
     } finally {
       setLoading(false);
     }
@@ -51,24 +50,23 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
-    const intervalId = setInterval(fetchData, 30000); // 30초마다 자동 새로고침
+    const intervalId = setInterval(fetchData, 30000); // 30초마다 갱신
     return () => clearInterval(intervalId);
   }, [fetchData]);
 
+  // 체크박스 핸들러 (모바일 최적화)
   const handleCheck = async (id: string | number, field: '1' | '2' | '3', currentValue: boolean) => {
     const newValue = !currentValue;
     
-    // 화면에 먼저 반영 (Optimistic update)
+    // 1. 화면에 먼저 즉시 반영 (낙관적 업데이트)
     setData(prevData => 
       prevData.map(row => 
         row['순번'] === id ? { ...row, [field]: newValue } : row
       )
     );
     
-    setUpdatingId(String(id));
-    
     try {
-      // ⚠️ Code.gs의 규격에 맞춰 페이로드 수정
+      // 2. 서버(GAS)에 데이터 전송
       const payload = {
         id: String(id),
         column: field,
@@ -77,12 +75,12 @@ export default function App() {
       
       const response = await fetch(GAS_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // GAS 권한 이슈 방지를 위한 설정
         body: JSON.stringify(payload)
       });
       
       const result = await response.json();
-      if (!result.success) throw new Error(result.message);
+      if (!result.success) throw new Error();
     } catch (err) {
       // 실패 시 원래대로 복구
       setData(prevData => 
@@ -90,9 +88,7 @@ export default function App() {
           row['순번'] === id ? { ...row, [field]: currentValue } : row
         )
       );
-      alert('저장에 실패했습니다. 시트 권한을 확인하세요.');
-    } finally {
-      setUpdatingId(null);
+      alert('저장에 실패했습니다. 시트의 공유/편집 권한을 확인하세요.');
     }
   };
 
@@ -102,118 +98,85 @@ export default function App() {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
-    try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return dateStr;
-      return `${date.getMonth() + 1}월 ${date.getDate()}일`;
-    } catch {
-      return dateStr;
-    }
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? dateStr : `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
-  // Define columns to display (excluding '순번')
   const columns = [
-    { key: '품목', width: 'w-auto' },
+    { key: '품목', width: 'min-w-[120px]' },
     { key: '사이즈', width: 'w-16' },
-    { key: '수량', width: 'w-16' },
-    { key: '출고일', width: 'w-24' },
-    { key: '끈', width: 'w-16' },
-    { key: '아일렛', width: 'w-16' },
-    { key: '비고', width: 'w-32' },
+    { key: '수량', width: 'w-12' },
+    { key: '출고일', width: 'w-14' },
+    { key: '끈', width: 'w-12' },
+    { key: '아일렛', width: 'w-12' },
+    { key: '비고', width: 'min-w-[100px]' },
     { key: '1', width: 'w-10' },
     { key: '2', width: 'w-10' },
     { key: '3', width: 'w-10' },
   ] as const;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4">
+    <div className="min-h-screen bg-gray-100 text-gray-900 font-sans">
+      <div className="max-w-7xl mx-auto px-2 py-4">
         
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+        {/* 헤더 영역 */}
+        <div className="flex justify-between items-center mb-4 px-1">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">카펜터 발주서</h1>
-            <p className="text-xs text-gray-500 mt-1">공유자와 실시간으로 체크 상태가 동기화됩니다.</p>
+            <h1 className="text-lg font-bold">카펜터 발주 관리</h1>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 sm:w-64">
-              <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="품목 검색..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 text-sm transition-all"
-              />
-            </div>
-            <button 
-              onClick={fetchData}
-              disabled={loading}
-              className="p-1.5 bg-white border border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-            >
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="품목 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-2 py-1 border border-gray-400 rounded text-sm w-32 sm:w-48"
+            />
+            <button onClick={fetchData} className="p-1.5 bg-white border border-gray-400 rounded">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg flex items-start">
-            <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
-            <p className="text-sm text-red-700">{error}</p>
+          <div className="mb-4 bg-red-100 border border-red-400 p-2 rounded text-xs text-red-700">
+            {error}
           </div>
         )}
 
-        <div className="bg-white shadow-sm border border-gray-300 overflow-hidden">
+        {/* 테이블 영역 */}
+        <div className="bg-white border border-gray-400 overflow-hidden rounded-sm shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse border border-gray-300">
-              <thead className="bg-gray-100">
+            <table className="min-w-full border-collapse">
+              <thead className="bg-gray-200">
                 <tr>
                   {columns.map((col) => (
-                    <th 
-                      key={col.key} 
-                      className={`px-2 py-2 border border-gray-300 text-center text-xs font-bold text-gray-700 uppercase tracking-wider whitespace-nowrap ${col.width}`}
-                    >
+                    <th key={col.key} className={`border border-gray-400 px-1 py-2 text-[11px] font-bold text-gray-700 ${col.width}`}>
                       {col.key}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white">
                 {loading && data.length === 0 ? (
-                  <tr>
-                    <td colSpan={columns.length} className="px-6 py-12 text-center">
-                      <Loader2 className="h-8 w-8 text-indigo-500 animate-spin mx-auto" />
-                    </td>
-                  </tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-sm">로딩 중...</td></tr>
                 ) : filteredData.length === 0 ? (
-                  <tr>
-                    <td colSpan={columns.length} className="px-6 py-12 text-center text-gray-500">데이터가 없습니다.</td>
-                  </tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-sm">데이터가 없습니다.</td></tr>
                 ) : (
                   filteredData.map((row, idx) => {
-                    const isChecked = row['1'] || row['2'] || row['3'];
-                    // Removed isUpdating blocking to allow multiple rapid clicks
-                    
+                    const isRowDone = row['1'] && row['2'] && row['3'];
                     return (
-                      <tr 
-                        key={row['순번'] || idx} 
-                        className={`
-                          ${isChecked ? 'bg-green-100' : 'hover:bg-gray-50'} 
-                          transition-colors
-                        `}
-                      >
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm font-medium text-gray-900">{row['품목']}</td>
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm text-center">{row['사이즈']}</td>
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm text-center">{row['수량']}</td>
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm text-center">{formatDate(row['출고일'])}</td>
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm text-center">{row['끈']}</td>
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm text-center">{row['아일렛']}</td>
-                        <td className="px-2 py-1.5 border border-gray-300 text-sm max-w-xs truncate">{row['비고']}</td>
+                      <tr key={row['순번'] || idx} className={`${isRowDone ? 'bg-gray-100 text-gray-400' : 'hover:bg-blue-50'}`}>
+                        <td className="border border-gray-300 px-1 py-2 text-xs font-bold">{row['품목']}</td>
+                        <td className="border border-gray-300 px-1 py-2 text-[10px] text-center">{row['사이즈']}</td>
+                        <td className="border border-gray-300 px-1 py-2 text-xs text-center">{row['수량']}</td>
+                        <td className="border border-gray-300 px-1 py-2 text-xs text-center">{formatDate(row['출고일'])}</td>
+                        <td className="border border-gray-300 px-1 py-2 text-xs text-center">{row['끈']}</td>
+                        <td className="border border-gray-300 px-1 py-2 text-xs text-center">{row['아일렛']}</td>
+                        <td className="border border-gray-300 px-1 py-2 text-xs max-w-xs truncate">{row['비고']}</td>
                         
                         {(['1', '2', '3'] as const).map((field) => (
-                          <td key={field} className="px-1 py-1 border border-gray-300 text-center w-10">
+                          <td key={field} className="border border-gray-300 px-1 py-1 text-center w-10">
                             <div className="flex items-center justify-center h-full">
                               <input
                                 type="checkbox"
